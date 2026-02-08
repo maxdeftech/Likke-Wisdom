@@ -97,36 +97,50 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
     if (!supabase) return;
     
     // maybeSingle avoids the PGRST116 error if row is missing
-    let { data: profile, error } = await supabase
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('username, is_premium, avatar_url')
       .eq('id', userId)
       .maybeSingle();
 
+    let finalProfile = profile;
+
     // If trigger failed, create profile manually
-    if (!profile) {
-      console.warn("Trigger delay or failure. Manually creating profile row...");
+    if (!finalProfile) {
+      console.warn("Manual creation needed for profile...");
       const fallbackUsername = userEmail?.split('@')[0] || 'Seeker';
       const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
         .insert({ id: userId, username: fallbackUsername })
         .select()
-        .single();
+        .maybeSingle();
       
-      if (insertError) {
+      if (insertError || !newProfile) {
         onAuthComplete({ id: userId, username: fallbackUsername, isGuest: false, isPremium: false });
         return;
       }
-      profile = newProfile;
+      finalProfile = newProfile;
     }
 
-    onAuthComplete({
-      id: userId,
-      username: profile.username || userEmail?.split('@')[0] || 'Seeker',
-      avatarUrl: profile.avatar_url || undefined,
-      isGuest: false,
-      isPremium: profile.is_premium || false
-    });
+    // Safety check to ensure finalProfile is not null before accessing its properties
+    if (finalProfile) {
+      onAuthComplete({
+        id: userId,
+        username: finalProfile.username || userEmail?.split('@')[0] || 'Seeker',
+        avatarUrl: finalProfile.avatar_url || undefined,
+        isGuest: false,
+        isPremium: !!finalProfile.is_premium
+      });
+    } else {
+      // Emergency fallback if database operations failed completely
+      const fallbackUsername = userEmail?.split('@')[0] || 'Seeker';
+      onAuthComplete({
+        id: userId,
+        username: fallbackUsername,
+        isGuest: false,
+        isPremium: false
+      });
+    }
   };
 
   const handleGuest = () => {

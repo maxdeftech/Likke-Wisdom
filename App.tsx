@@ -38,10 +38,12 @@ const App: React.FC = () => {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [bookmarkedVerses, setBookmarkedVerses] = useState<any[]>([]);
 
-  // Improved notification clear effect
+  // Robust notification clear effect - ensures cleaning regardless of rapid triggers
   useEffect(() => {
     if (notification) {
-      const timer = setTimeout(() => setNotification(null), 3000);
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 3000);
       return () => clearTimeout(timer);
     }
   }, [notification]);
@@ -76,11 +78,19 @@ const App: React.FC = () => {
         setIconicQuotes(prev => prev.map(q => ({ ...q, isFavorite: bookmarkedIds.has(q.id) })));
         setBibleAffirmations(prev => prev.map(b => ({ ...b, isFavorite: bookmarkedIds.has(b.id) })));
 
-        // Critical fix: Ensure metadata is parsed if it's a string, or used directly if it's an object
+        // Critical fix: Extremely robust metadata parsing for different DB storage formats
         const kjvBookmarks = bookmarks
           .filter(b => b.item_type === 'kjv')
           .map(b => {
-            const meta = typeof b.metadata === 'string' ? JSON.parse(b.metadata) : b.metadata;
+            let meta = b.metadata;
+            if (typeof meta === 'string') {
+              try {
+                meta = JSON.parse(meta);
+              } catch (e) {
+                console.error("Metadata parse error:", e);
+                meta = {};
+              }
+            }
             return {
               id: b.item_id,
               text: meta?.text || '',
