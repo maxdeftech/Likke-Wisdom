@@ -16,7 +16,6 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
   const [password, setPassword] = useState('');
   const [otpToken, setOtpToken] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<{title: string, message: string} | null>(null);
   const [resendTimer, setResendTimer] = useState(0);
 
@@ -96,44 +95,43 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
   const fetchProfileAndComplete = async (userId: string, userEmail?: string) => {
     if (!supabase) return;
     
-    // maybeSingle avoids the PGRST116 error if row is missing
-    const { data: profile, error } = await supabase
+    // 1. Try to fetch existing profile
+    const { data: profile } = await supabase
       .from('profiles')
       .select('username, is_premium, avatar_url')
       .eq('id', userId)
       .maybeSingle();
 
-    let finalProfile = profile;
-
-    // If trigger failed, create profile manually
-    if (!finalProfile) {
-      console.warn("Manual creation needed for profile...");
-      const fallbackUsername = userEmail?.split('@')[0] || 'Seeker';
-      const { data: newProfile, error: insertError } = await supabase
-        .from('profiles')
-        .insert({ id: userId, username: fallbackUsername })
-        .select()
-        .maybeSingle();
-      
-      if (insertError || !newProfile) {
-        onAuthComplete({ id: userId, username: fallbackUsername, isGuest: false, isPremium: false });
-        return;
-      }
-      finalProfile = newProfile;
-    }
-
-    // Safety check to ensure finalProfile is not null before accessing its properties
-    if (finalProfile) {
+    if (profile) {
       onAuthComplete({
         id: userId,
-        username: finalProfile.username || userEmail?.split('@')[0] || 'Seeker',
-        avatarUrl: finalProfile.avatar_url || undefined,
+        username: profile.username || userEmail?.split('@')[0] || 'Seeker',
+        avatarUrl: profile.avatar_url || undefined,
         isGuest: false,
-        isPremium: !!finalProfile.is_premium
+        isPremium: !!profile.is_premium
+      });
+      return;
+    }
+
+    // 2. Profile not found - attempt to create one manually
+    console.warn("Manual creation needed for profile...");
+    const fallbackUsername = userEmail?.split('@')[0] || 'Seeker';
+    const { data: newProfile } = await supabase
+      .from('profiles')
+      .insert({ id: userId, username: fallbackUsername })
+      .select('username, is_premium, avatar_url')
+      .maybeSingle();
+    
+    if (newProfile) {
+      onAuthComplete({
+        id: userId,
+        username: newProfile.username || fallbackUsername,
+        avatarUrl: newProfile.avatar_url || undefined,
+        isGuest: false,
+        isPremium: !!newProfile.is_premium
       });
     } else {
-      // Emergency fallback if database operations failed completely
-      const fallbackUsername = userEmail?.split('@')[0] || 'Seeker';
+      // 3. Absolute fallback if database creation fails
       onAuthComplete({
         id: userId,
         username: fallbackUsername,
