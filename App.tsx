@@ -27,6 +27,7 @@ const App: React.FC = () => {
   const [showAI, setShowAI] = useState(false);
   const [showPremium, setShowPremium] = useState(false);
   const [showPinGate, setShowPinGate] = useState(false);
+  const [showAuthGate, setShowAuthGate] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -58,7 +59,7 @@ const App: React.FC = () => {
   }, [quotes, bibleAffirmations]);
 
   const syncUserContent = useCallback(async (userId: string) => {
-    if (!supabase) return;
+    if (!supabase || userId === 'guest') return;
     try {
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       if (profile) {
@@ -104,22 +105,35 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!supabase) return;
+    
+    // Initial check for session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         syncUserContent(session.user.id);
-        if (view === 'splash') setView('main');
+        if (view === 'splash' || view === 'auth') setView('main');
       }
     });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
-        setUser({ id: session.user.id, username: session.user.user_metadata?.username || 'Seeker', isGuest: false, isPremium: false });
+        setUser({ 
+          id: session.user.id, 
+          username: session.user.user_metadata?.username || 'Seeker', 
+          isGuest: false, 
+          isPremium: false 
+        });
         syncUserContent(session.user.id);
         if (view === 'auth' || view === 'splash') setView('main');
       } else {
-        setUser(null);
-        if (view === 'main') setView('auth');
+        // CRITICAL FIX: Only clear user if it's NOT a guest session
+        setUser(prev => {
+          if (prev?.isGuest) return prev;
+          if (view === 'main') setView('auth');
+          return null;
+        });
       }
     });
+
     return () => subscription.unsubscribe();
   }, [syncUserContent, view]);
 
@@ -158,6 +172,10 @@ const App: React.FC = () => {
   };
 
   const handleToggleFavorite = async (id: string, type: 'quote' | 'iconic' | 'bible') => {
+    if (user?.isGuest) {
+      setShowAuthGate(true);
+      return;
+    }
     let newState = false;
     if (type === 'quote') setQuotes(prev => prev.map(q => q.id === id ? { ...q, isFavorite: newState = !q.isFavorite, updatedAt: Date.now() } : q));
     else if (type === 'iconic') setIconicQuotes(prev => prev.map(q => q.id === id ? { ...q, isFavorite: newState = !q.isFavorite } : q));
@@ -173,6 +191,10 @@ const App: React.FC = () => {
   };
 
   const handleBookmarkBibleVerse = async (verse: any) => {
+    if (user?.isGuest) {
+      setShowAuthGate(true);
+      return;
+    }
     const verseId = `kjv-${verse.book_id}-${verse.chapter}-${verse.verse}`;
     const reference = `${verse.book_name} ${verse.chapter}:${verse.verse}`;
     let exists = false;
@@ -202,6 +224,10 @@ const App: React.FC = () => {
   };
 
   const handleAddJournalEntry = async (title: string, text: string, mood: string) => {
+    if (user?.isGuest) {
+      setShowAuthGate(true);
+      return;
+    }
     const newEntry: JournalEntry = { id: Date.now().toString(), title, text, mood, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(), timestamp: Date.now() };
     setJournalEntries(prev => [newEntry, ...prev]);
     if (user && !user.isGuest && supabase) {
@@ -239,22 +265,31 @@ const App: React.FC = () => {
     setView('auth');
   };
 
+  const handleOpenAI = () => {
+    if (user?.isGuest) {
+      setShowAuthGate(true);
+    } else {
+      setShowAI(true);
+    }
+  };
+
   const renderContent = () => {
     if (view === 'privacy') return <LegalView type="privacy" onClose={() => setView('main')} />;
     if (view === 'terms') return <LegalView type="terms" onClose={() => setView('main')} />;
     if (activeCategory) return <CategoryResultsView categoryId={activeCategory} onClose={() => setActiveCategory(null)} quotes={quotes} iconic={iconicQuotes} bible={bibleAffirmations} onFavorite={handleToggleFavorite} />;
+    
     if (!user) {
         if (view === 'onboarding') return <Onboarding onFinish={() => setView('auth')} />;
-        return <Auth onAuthComplete={(u) => { setUser(u); setView('main'); syncUserContent(u.id); }} />;
+        return <Auth onAuthComplete={(u) => { setUser(u); setView('main'); if (!u.isGuest) syncUserContent(u.id); }} />;
     }
+
     switch (activeTab) {
-      // Fix: Added onCategoryClick prop to Home component
-      case 'home': return <Home user={user} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={() => setShowAI(true)} />;
+      case 'home': return <Home user={user} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={handleOpenAI} />;
       case 'discover': return <Discover searchQuery={searchQuery} onSearchChange={setSearchQuery} onCategoryClick={setActiveCategory} />;
       case 'bible': return <BibleView user={user} onBookmark={handleBookmarkBibleVerse} onUpgrade={() => setShowPinGate(true)} />;
       case 'book': return <LikkleBook entries={journalEntries} onAdd={handleAddJournalEntry} onDelete={handleDeleteJournalEntry} searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
       case 'me': return <Profile user={user} entries={journalEntries} quotes={quotes} iconic={iconicQuotes} bible={bibleAffirmations} bookmarkedVerses={bookmarkedVerses} onOpenSettings={() => setShowSettings(true)} onStatClick={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onUpdateUser={handleUpdateUser} onRemoveBookmark={handleRemoveBookmark} />;
-      default: return <Home user={user} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={() => setShowAI(true)} />;
+      default: return <Home user={user} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={handleOpenAI} />;
     }
   };
 
@@ -272,6 +307,11 @@ const App: React.FC = () => {
         </div>
       )}
       <main className="flex-1 relative z-10 overflow-y-auto no-scrollbar scroll-smooth">{renderContent()}</main>
+      
+      {showAuthGate && (
+        <GuestAuthModal onClose={() => setShowAuthGate(false)} onSignUp={() => { setShowAuthGate(false); setView('auth'); }} />
+      )}
+      
       {showPinGate && (
         <PinEntryModal onClose={() => setShowPinGate(false)} onVerify={() => { setShowPinGate(false); setShowPremium(true); }} />
       )}
@@ -279,7 +319,7 @@ const App: React.FC = () => {
         <Settings user={user} isDarkMode={isDarkMode} onToggleTheme={() => setIsDarkMode(!isDarkMode)} onClose={() => setShowSettings(false)} onUpgrade={() => setShowPinGate(true)} onSignOut={handleSignOut} onUpdateUser={handleUpdateUser} onOpenPrivacy={() => { setShowSettings(false); setView('privacy'); }} onOpenTerms={() => { setShowSettings(false); setView('terms'); }} />
       )}
       {showAI && user && (
-        <AIWisdom user={user} onClose={() => setShowAI(false)} onUpgrade={() => { setShowAI(false); setShowPinGate(true); }} />
+        <AIWisdom user={user} onClose={() => setShowAI(false)} onUpgrade={() => { setShowAI(false); setShowPinGate(true); }} onGuestRestricted={() => { setShowAI(false); setShowAuthGate(true); }} />
       )}
       {showPremium && (
         <PremiumUpgrade onClose={() => setShowPremium(false)} onPurchaseSuccess={() => { handleUpdateUser({ isPremium: true }); setShowPremium(false); }} />
@@ -288,6 +328,22 @@ const App: React.FC = () => {
     </div>
   );
 };
+
+const GuestAuthModal: React.FC<{ onClose: () => void; onSignUp: () => void }> = ({ onClose, onSignUp }) => (
+  <div className="fixed inset-0 z-[4000] bg-background-dark/95 flex flex-col items-center justify-center p-8 backdrop-blur-xl animate-fade-in">
+    <div className="glass p-10 rounded-[3rem] w-full max-w-[340px] text-center border-white/10 shadow-2xl">
+      <div className="size-20 rounded-full bg-primary/10 flex items-center justify-center text-primary mx-auto mb-6">
+        <span className="material-symbols-outlined text-4xl">person_add</span>
+      </div>
+      <h2 className="text-2xl font-black text-white mb-3 uppercase tracking-tight">Join di Family!</h2>
+      <p className="text-white/50 text-xs font-bold mb-8 leading-relaxed">Guests can browse, but yuh need an account fi save wisdom, write inna journal, or use AI.</p>
+      <div className="space-y-4">
+        <button onClick={onSignUp} className="w-full bg-primary py-4 rounded-xl font-black text-[12px] uppercase text-background-dark shadow-xl active:scale-95 transition-all">Sign Up / Sign In</button>
+        <button onClick={onClose} className="w-full glass py-4 rounded-xl font-black text-[10px] uppercase text-white/40 active:scale-95 transition-all">Keep Browsin'</button>
+      </div>
+    </div>
+  </div>
+);
 
 const PinEntryModal: React.FC<{ onClose: () => void; onVerify: () => void }> = ({ onClose, onVerify }) => {
   const [pin, setPin] = useState('');
