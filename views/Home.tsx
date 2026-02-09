@@ -5,15 +5,15 @@ import { CATEGORIES } from '../constants';
 
 interface HomeProps {
   user: User;
+  isOnline: boolean;
   dailyItems: { quote: Quote; wisdom: Quote; verse: BibleAffirmation };
   onFavorite: (id: string, type: 'quote' | 'iconic' | 'bible') => void;
   onOpenAI: () => void;
   onTabChange: (tab: Tab) => void;
-  // Added onCategoryClick to allow setting category when navigating to discover
   onCategoryClick: (id: string) => void;
 }
 
-const Home: React.FC<HomeProps> = ({ user, dailyItems, onFavorite, onOpenAI, onTabChange, onCategoryClick }) => {
+const Home: React.FC<HomeProps> = ({ user, isOnline, dailyItems, onFavorite, onOpenAI, onTabChange, onCategoryClick }) => {
   const [activeDaily, setActiveDaily] = useState<'quote' | 'wisdom' | 'verse'>('quote');
   const [reveal, setReveal] = useState(false);
 
@@ -133,7 +133,6 @@ const Home: React.FC<HomeProps> = ({ user, dailyItems, onFavorite, onOpenAI, onT
           {CATEGORIES.slice(0, 3).map(cat => (
             <div 
               key={cat.id} 
-              // Fix: Replaced setActiveTab and setActiveCategory with onTabChange and onCategoryClick from props
               onClick={() => { onTabChange('discover'); onCategoryClick(cat.id); }}
               className="glass p-6 sm:p-8 rounded-[2rem] flex items-center gap-4 group active:scale-95 transition-all border-white/5 cursor-pointer hover:border-primary/20"
             >
@@ -151,10 +150,19 @@ const Home: React.FC<HomeProps> = ({ user, dailyItems, onFavorite, onOpenAI, onT
 
       <section 
         onClick={onOpenAI}
-        className="glass rounded-[2rem] sm:rounded-[3rem] overflow-hidden relative group cursor-pointer mb-10 border-white/5 shadow-2xl h-56 sm:h-72"
+        className={`glass rounded-[2rem] sm:rounded-[3rem] overflow-hidden relative group cursor-pointer mb-10 border-white/5 shadow-2xl h-56 sm:h-72 transition-all ${!isOnline ? 'grayscale-[0.5]' : ''}`}
       >
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10"></div>
         <img className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" src="https://images.unsplash.com/photo-1541410965313-d53b3c16ef17?q=80&w=800&auto=format&fit=crop" alt="Island" />
+        
+        {!isOnline && (
+           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-8 text-center bg-background-dark/40 backdrop-blur-[2px]">
+              <span className="material-symbols-outlined text-4xl text-red-400 mb-2">signal_wifi_off</span>
+              <p className="text-white font-black uppercase text-[10px] tracking-widest">Signal low fi brew magic</p>
+              <p className="text-white/50 font-medium text-[8px] uppercase tracking-widest mt-1">Connect fi craft custom wisdom</p>
+           </div>
+        )}
+
         <div className="absolute bottom-6 sm:bottom-10 left-6 sm:left-10 z-20 w-full flex justify-between pr-12 sm:pr-20 items-end">
           <div className="space-y-1 sm:space-y-3">
             <p className="text-[10px] sm:text-[12px] font-black text-primary uppercase tracking-[0.3em] flex items-center gap-1">

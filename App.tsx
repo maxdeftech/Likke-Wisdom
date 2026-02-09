@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [showPinGate, setShowPinGate] = useState(false);
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
@@ -38,6 +39,23 @@ const App: React.FC = () => {
   const [bibleAffirmations, setBibleAffirmations] = useState<BibleAffirmation[]>(BIBLE_AFFIRMATIONS);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [bookmarkedVerses, setBookmarkedVerses] = useState<any[]>([]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setNotification('Signal back! Syncing vibes...');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setNotification('Offline mode active. Keep growing.');
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (notification) {
@@ -59,7 +77,7 @@ const App: React.FC = () => {
   }, [quotes, bibleAffirmations]);
 
   const syncUserContent = useCallback(async (userId: string) => {
-    if (!supabase || userId === 'guest') return;
+    if (!supabase || userId === 'guest' || !navigator.onLine) return;
     try {
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       if (profile) {
@@ -106,7 +124,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!supabase) return;
     
-    // Initial check for session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         syncUserContent(session.user.id);
@@ -125,7 +142,6 @@ const App: React.FC = () => {
         syncUserContent(session.user.id);
         if (view === 'auth' || view === 'splash') setView('main');
       } else {
-        // CRITICAL FIX: Only clear user if it's NOT a guest session
         setUser(prev => {
           if (prev?.isGuest) return prev;
           if (view === 'main') setView('auth');
@@ -160,7 +176,7 @@ const App: React.FC = () => {
     if (!user) return;
     const updatedUser = { ...user, ...data };
     setUser(updatedUser);
-    if (!user.isGuest && supabase) {
+    if (!user.isGuest && supabase && navigator.onLine) {
       try {
         await supabase.from('profiles').update({
           username: data.username || user.username,
@@ -181,7 +197,7 @@ const App: React.FC = () => {
     else if (type === 'iconic') setIconicQuotes(prev => prev.map(q => q.id === id ? { ...q, isFavorite: newState = !q.isFavorite } : q));
     else if (type === 'bible') setBibleAffirmations(prev => prev.map(q => q.id === id ? { ...q, isFavorite: newState = !q.isFavorite } : q));
     
-    if (user && !user.isGuest && supabase) {
+    if (user && !user.isGuest && supabase && navigator.onLine) {
       try {
         if (newState) await supabase.from('bookmarks').insert({ user_id: user.id, item_id: id, item_type: type });
         else await supabase.from('bookmarks').delete().eq('user_id', user.id).eq('item_id', id);
@@ -206,7 +222,7 @@ const App: React.FC = () => {
       }
       return [{ id: verseId, text: verse.text, reference, timestamp: Date.now() }, ...prev];
     });
-    if (user && !user.isGuest && supabase) {
+    if (user && !user.isGuest && supabase && navigator.onLine) {
       try {
         if (!exists) {
           await supabase.from('bookmarks').insert({ 
@@ -230,7 +246,7 @@ const App: React.FC = () => {
     }
     const newEntry: JournalEntry = { id: Date.now().toString(), title, text, mood, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(), timestamp: Date.now() };
     setJournalEntries(prev => [newEntry, ...prev]);
-    if (user && !user.isGuest && supabase) {
+    if (user && !user.isGuest && supabase && navigator.onLine) {
       try { await supabase.from('journal_entries').insert({ user_id: user.id, title, text, mood, date: newEntry.date, timestamp: newEntry.timestamp }); }
       catch (e) { console.error("Journal error:", e); }
     }
@@ -239,7 +255,7 @@ const App: React.FC = () => {
 
   const handleDeleteJournalEntry = async (id: string) => {
     setJournalEntries(prev => prev.filter(entry => entry.id !== id));
-    if (user && !user.isGuest && supabase) {
+    if (user && !user.isGuest && supabase && navigator.onLine) {
       try { await supabase.from('journal_entries').delete().eq('timestamp', parseInt(id)); }
       catch (e) { console.error("Delete journal error:", e); }
     }
@@ -251,7 +267,7 @@ const App: React.FC = () => {
     else if (type === 'quote' || type === 'wisdom') setQuotes(prev => prev.map(q => q.id === id ? { ...q, isFavorite: false } : q));
     else if (type === 'legend' || type === 'iconic') setIconicQuotes(prev => prev.map(q => q.id === id ? { ...q, isFavorite: false } : q));
     else if (type === 'verse' || type === 'bible') setBibleAffirmations(prev => prev.map(q => q.id === id ? { ...q, isFavorite: false } : q));
-    if (user && !user.isGuest && supabase) {
+    if (user && !user.isGuest && supabase && navigator.onLine) {
       try { await supabase.from('bookmarks').delete().eq('user_id', user.id).eq('item_id', id); }
       catch (e) { console.error("Remove bookmark error:", e); }
     }
@@ -284,12 +300,12 @@ const App: React.FC = () => {
     }
 
     switch (activeTab) {
-      case 'home': return <Home user={user} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={handleOpenAI} />;
-      case 'discover': return <Discover searchQuery={searchQuery} onSearchChange={setSearchQuery} onCategoryClick={setActiveCategory} />;
-      case 'bible': return <BibleView user={user} onBookmark={handleBookmarkBibleVerse} onUpgrade={() => setShowPinGate(true)} />;
+      case 'home': return <Home user={user} isOnline={isOnline} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={handleOpenAI} />;
+      case 'discover': return <Discover searchQuery={searchQuery} onSearchChange={setSearchQuery} onCategoryClick={setActiveCategory} isOnline={isOnline} />;
+      case 'bible': return <BibleView user={user} onBookmark={handleBookmarkBibleVerse} onUpgrade={() => setShowPinGate(true)} isOnline={isOnline} />;
       case 'book': return <LikkleBook entries={journalEntries} onAdd={handleAddJournalEntry} onDelete={handleDeleteJournalEntry} searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
       case 'me': return <Profile user={user} entries={journalEntries} quotes={quotes} iconic={iconicQuotes} bible={bibleAffirmations} bookmarkedVerses={bookmarkedVerses} onOpenSettings={() => setShowSettings(true)} onStatClick={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onUpdateUser={handleUpdateUser} onRemoveBookmark={handleRemoveBookmark} />;
-      default: return <Home user={user} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={handleOpenAI} />;
+      default: return <Home user={user} isOnline={isOnline} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={handleOpenAI} />;
     }
   };
 
@@ -298,6 +314,19 @@ const App: React.FC = () => {
   return (
     <div className="relative flex flex-col h-screen w-full max-w-2xl mx-auto overflow-hidden bg-white dark:bg-background-dark shadow-2xl transition-colors duration-300">
       <div className="fixed inset-0 jamaica-gradient opacity-60 pointer-events-none z-0"></div>
+      
+      {!isOnline && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[2500] animate-fade-in pointer-events-none">
+          <div className="glass px-6 py-2 rounded-full border-red-500/20 bg-background-dark/80 flex items-center gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5">
+             <span className="material-symbols-outlined text-red-500 text-sm animate-pulse">wifi_off</span>
+             <div className="flex flex-col items-start leading-none">
+                <span className="text-[9px] font-black uppercase text-white tracking-[0.2em]">Signal Low</span>
+                <span className="text-[7px] font-bold uppercase text-white/40 tracking-[0.1em]">Stashed wisdom active</span>
+             </div>
+          </div>
+        </div>
+      )}
+
       {notification && (
         <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[2000] animate-fade-in pointer-events-none w-fit px-8">
           <div className="bg-jamaican-gold py-2.5 px-4 rounded-full flex items-center gap-2 shadow-2xl border border-black/10">
@@ -319,7 +348,7 @@ const App: React.FC = () => {
         <Settings user={user} isDarkMode={isDarkMode} onToggleTheme={() => setIsDarkMode(!isDarkMode)} onClose={() => setShowSettings(false)} onUpgrade={() => setShowPinGate(true)} onSignOut={handleSignOut} onUpdateUser={handleUpdateUser} onOpenPrivacy={() => { setShowSettings(false); setView('privacy'); }} onOpenTerms={() => { setShowSettings(false); setView('terms'); }} />
       )}
       {showAI && user && (
-        <AIWisdom user={user} onClose={() => setShowAI(false)} onUpgrade={() => { setShowAI(false); setShowPinGate(true); }} onGuestRestricted={() => { setShowAI(false); setShowAuthGate(true); }} />
+        <AIWisdom user={user} isOnline={isOnline} onClose={() => setShowAI(false)} onUpgrade={() => { setShowAI(false); setShowPinGate(true); }} onGuestRestricted={() => { setShowAI(false); setShowAuthGate(true); }} />
       )}
       {showPremium && (
         <PremiumUpgrade onClose={() => setShowPremium(false)} onPurchaseSuccess={() => { handleUpdateUser({ isPremium: true }); setShowPremium(false); }} />

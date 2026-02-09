@@ -6,15 +6,23 @@ interface DiscoverProps {
   onCategoryClick: (id: string) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  isOnline: boolean;
 }
 
-const Discover: React.FC<DiscoverProps> = ({ onCategoryClick, searchQuery, onSearchChange }) => {
+const Discover: React.FC<DiscoverProps> = ({ onCategoryClick, searchQuery, onSearchChange, isOnline }) => {
   return (
     <div className="p-6 sm:p-10 pb-24 animate-fade-in">
       <header className="py-12 sm:py-16 flex flex-col gap-2">
          <span className="text-[10px] sm:text-[12px] font-black text-primary uppercase tracking-[0.4em]">Wisdom Market</span>
          <h1 className="text-4xl sm:text-6xl font-black tracking-tight text-slate-900 dark:text-white">Pick Yuh Vibe</h1>
          <p className="text-slate-500 dark:text-slate-400 font-medium sm:text-lg">Find di inspiration weh fit yuh spirit.</p>
+         
+         {!isOnline && (
+           <div className="mt-4 glass-gold px-4 py-2 rounded-2xl border-jamaican-gold/20 flex items-center gap-3 w-fit">
+              <span className="material-symbols-outlined text-jamaican-gold text-sm">inventory_2</span>
+              <span className="text-[9px] font-black uppercase text-jamaican-gold tracking-widest">Viewing Stashed Library</span>
+           </div>
+         )}
       </header>
 
       <div className="relative mb-10 sm:mb-16">

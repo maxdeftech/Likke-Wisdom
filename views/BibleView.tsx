@@ -4,6 +4,7 @@ import { User } from '../types';
 
 interface BibleViewProps {
   user: User;
+  isOnline: boolean;
   onBookmark: (verse: any) => void;
   onUpgrade: () => void;
 }
@@ -25,7 +26,7 @@ const BOOK_CHAPTERS: Record<string, number> = {
   "Jude": 1, "Revelation": 22
 };
 
-const BibleView: React.FC<BibleViewProps> = ({ user, onBookmark, onUpgrade }) => {
+const BibleView: React.FC<BibleViewProps> = ({ user, isOnline, onBookmark, onUpgrade }) => {
   const [book, setBook] = useState('Psalms');
   const [chapter, setChapter] = useState(23);
   const [verses, setVerses] = useState<any[]>([]);
@@ -35,6 +36,7 @@ const BibleView: React.FC<BibleViewProps> = ({ user, onBookmark, onUpgrade }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [selectorStage, setSelectorStage] = useState<'book' | 'chapter'>('book');
   const [downloading, setDownloading] = useState(false);
+  const [isServingCache, setIsServingCache] = useState(false);
 
   const books = Object.keys(BOOK_CHAPTERS);
   const filteredBooks = useMemo(() => books.filter(b => b.toLowerCase().includes(searchQuery.toLowerCase())), [searchQuery, books]);
@@ -51,13 +53,22 @@ const BibleView: React.FC<BibleViewProps> = ({ user, onBookmark, onUpgrade }) =>
   const fetchBible = async () => {
     setLoading(true);
     setError(null);
+    setIsServingCache(false);
+    
     const cached = localStorage.getItem(getCacheKey(book, chapter));
     if (cached) {
       try {
         setVerses(JSON.parse(cached));
+        setIsServingCache(true);
         setLoading(false);
         return;
       } catch { /* ignore cache error */ }
+    }
+
+    if (!isOnline) {
+      setLoading(false);
+      setError("No signal. Chapter nuh stashed fi offline use.");
+      return;
     }
 
     try {
@@ -84,6 +95,7 @@ const BibleView: React.FC<BibleViewProps> = ({ user, onBookmark, onUpgrade }) =>
   useEffect(() => { fetchBible(); }, [book, chapter]);
 
   const handleDownloadBook = async () => {
+    if (!isOnline) return;
     if (!user.isPremium) { onUpgrade(); return; }
     setDownloading(true);
     try {
@@ -112,8 +124,8 @@ const BibleView: React.FC<BibleViewProps> = ({ user, onBookmark, onUpgrade }) =>
           {user.isPremium && (
             <button 
               onClick={handleDownloadBook}
-              disabled={downloading || isBookDownloaded(book)}
-              className={`size-14 sm:size-16 rounded-2xl flex items-center justify-center shadow-xl transition-all ${isBookDownloaded(book) ? 'bg-primary/20 text-primary' : 'glass text-slate-900/40 dark:text-white/40'}`}
+              disabled={downloading || isBookDownloaded(book) || !isOnline}
+              className={`size-14 sm:size-16 rounded-2xl flex items-center justify-center shadow-xl transition-all ${isBookDownloaded(book) ? 'bg-primary/20 text-primary' : 'glass text-slate-900/40 dark:text-white/40'} ${!isOnline && !isBookDownloaded(book) ? 'opacity-20 cursor-not-allowed' : ''}`}
             >
               <span className={`material-symbols-outlined text-3xl sm:text-4xl font-black ${downloading ? 'animate-bounce' : ''}`}>
                 {isBookDownloaded(book) ? 'download_done' : 'cloud_download'}
@@ -160,6 +172,18 @@ const BibleView: React.FC<BibleViewProps> = ({ user, onBookmark, onUpgrade }) =>
         </div>
       )}
 
+      {isServingCache && (
+        <div className="flex justify-center mb-6 animate-fade-in">
+           <div className="bg-primary/10 border border-primary/20 px-6 py-2 rounded-full flex items-center gap-3 shadow-lg">
+              <span className="material-symbols-outlined text-primary text-sm animate-pulse">offline_pin</span>
+              <div className="flex flex-col">
+                <span className="text-[9px] font-black uppercase text-primary tracking-widest leading-none">Vibe Vault Access</span>
+                <span className="text-[7px] font-bold uppercase text-primary/60 tracking-widest">Stashed fi offline readin'</span>
+              </div>
+           </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-4 mb-8 max-w-2xl mx-auto">
         <button onClick={() => setChapter(Math.max(1, chapter - 1))} className="size-14 sm:size-16 rounded-2xl glass flex items-center justify-center text-primary"><span className="material-symbols-outlined text-3xl sm:text-4xl">chevron_left</span></button>
         <div onClick={() => { setShowSelector(true); setSelectorStage('book'); }} className="flex-1 glass h-14 sm:h-16 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:border-primary/20 transition-all">
@@ -173,9 +197,10 @@ const BibleView: React.FC<BibleViewProps> = ({ user, onBookmark, onUpgrade }) =>
         {loading ? (
           <div className="py-24 text-center"><span className="material-symbols-outlined text-5xl text-primary animate-spin">sync</span></div>
         ) : error ? (
-          <div className="py-20 text-center glass rounded-[2.5rem] p-8 border-red-500/20 shadow-2xl">
-            <p className="text-red-400 font-bold mb-8 text-lg">{error}</p>
-            <button onClick={fetchBible} className="w-full max-w-xs mx-auto bg-red-500/10 text-red-400 py-4 rounded-2xl uppercase font-black text-xs tracking-[0.2em] border border-red-500/20">Try Again</button>
+          <div className="py-20 text-center glass rounded-[2.5rem] p-10 border-red-500/20 shadow-2xl bg-red-500/5">
+            <span className="material-symbols-outlined text-5xl text-red-400 mb-6">cloud_off</span>
+            <p className="text-red-400 font-black uppercase text-sm tracking-widest mb-2 leading-relaxed">{error}</p>
+            {isOnline && <button onClick={fetchBible} className="mt-8 w-full max-w-xs mx-auto bg-primary text-background-dark py-5 rounded-2xl uppercase font-black text-xs tracking-[0.2em] shadow-xl">Try Again</button>}
           </div>
         ) : (
           verses.map(v => (

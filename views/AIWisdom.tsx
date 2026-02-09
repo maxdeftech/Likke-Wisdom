@@ -6,17 +6,19 @@ import { User } from '../types';
 
 interface AIWisdomProps {
   user: User;
+  isOnline: boolean;
   onClose: () => void;
   onUpgrade: () => void;
   onGuestRestricted: () => void;
 }
 
-const AIWisdom: React.FC<AIWisdomProps> = ({ user, onClose, onUpgrade, onGuestRestricted }) => {
+const AIWisdom: React.FC<AIWisdomProps> = ({ user, isOnline, onClose, onUpgrade, onGuestRestricted }) => {
   const [mood, setMood] = useState('Peace');
   const [loading, setLoading] = useState(false);
   const [wisdom, setWisdom] = useState<{ patois: string; english: string } | null>(null);
 
   const brewWisdom = async () => {
+    if (!isOnline) return;
     if (user.isGuest) {
       onGuestRestricted();
       return;
@@ -43,7 +45,19 @@ const AIWisdom: React.FC<AIWisdomProps> = ({ user, onClose, onUpgrade, onGuestRe
         <span className="material-symbols-outlined text-primary">auto_awesome</span>
       </header>
 
-      {user.isGuest ? (
+      {!isOnline ? (
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-10 text-center animate-fade-in">
+           <div className="size-32 rounded-3xl glass flex items-center justify-center text-red-400 mb-8 shadow-[0_0_40px_rgba(248,113,113,0.1)] border-red-500/20">
+             <span className="material-symbols-outlined text-6xl">cloud_off</span>
+           </div>
+           <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-4 leading-tight uppercase tracking-tight">No Signal, <br/><span className="text-red-400">No Magic</span></h2>
+           <p className="text-slate-500 dark:text-white/40 text-sm font-medium mb-10 leading-relaxed uppercase tracking-widest">Brewing custom wisdom needs a link to di stars. Join di network fi craft yuh vibe.</p>
+           <div className="w-full glass p-6 rounded-2xl border-white/5 bg-white/5">
+              <p className="text-xs font-bold text-slate-900 dark:text-white/60 mb-1">TIP</p>
+              <p className="text-[10px] font-medium text-slate-500 dark:text-white/30 uppercase tracking-widest">Check yuh Wi-Fi or Data fi unlock di AI brew.</p>
+           </div>
+        </div>
+      ) : user.isGuest ? (
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-10 text-center animate-fade-in">
            <div className="size-32 rounded-3xl glass flex items-center justify-center text-primary mb-8 animate-float">
              <span className="material-symbols-outlined text-6xl">lock_person</span>
