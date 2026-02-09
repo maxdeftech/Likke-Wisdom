@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 export async function generatePatoisWisdom(mood: string) {
   // Ensure we create a new instance right before calling as per guidelines
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     const response = await ai.models.generateContent({

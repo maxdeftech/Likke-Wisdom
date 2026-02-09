@@ -60,7 +60,6 @@ const App: React.FC = () => {
   const syncUserContent = useCallback(async (userId: string) => {
     if (!supabase) return;
     try {
-      // 1. Sync Profile
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       if (profile) {
         setUser(prev => ({
@@ -72,7 +71,6 @@ const App: React.FC = () => {
         }));
       }
 
-      // 2. Sync Bookmarks
       const { data: bookmarks } = await supabase.from('bookmarks').select('*').eq('user_id', userId);
       if (bookmarks) {
         const bookmarkedIds = new Set(bookmarks.map(b => b.item_id));
@@ -97,7 +95,6 @@ const App: React.FC = () => {
         setBookmarkedVerses(kjvBookmarks);
       }
 
-      // 3. Sync Journal
       const { data: entries } = await supabase.from('journal_entries').select('*').eq('user_id', userId).order('timestamp', { ascending: false });
       if (entries) setJournalEntries(entries);
     } catch (e) {
@@ -105,19 +102,14 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Auth Persistence & Real-time Sync
   useEffect(() => {
     if (!supabase) return;
-
-    // Check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         syncUserContent(session.user.id);
         if (view === 'splash') setView('main');
       }
     });
-
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         setUser({ id: session.user.id, username: session.user.user_metadata?.username || 'Seeker', isGuest: false, isPremium: false });
@@ -128,11 +120,9 @@ const App: React.FC = () => {
         if (view === 'main') setView('auth');
       }
     });
-
     return () => subscription.unsubscribe();
-  }, [syncUserContent]);
+  }, [syncUserContent, view]);
 
-  // Splash logic
   useEffect(() => {
     if (view === 'splash') {
       const interval = setInterval(() => {
@@ -186,7 +176,6 @@ const App: React.FC = () => {
     const verseId = `kjv-${verse.book_id}-${verse.chapter}-${verse.verse}`;
     const reference = `${verse.book_name} ${verse.chapter}:${verse.verse}`;
     let exists = false;
-
     setBookmarkedVerses(prev => {
       const alreadyIn = prev.find(v => v.id === verseId);
       if (alreadyIn) {
@@ -195,7 +184,6 @@ const App: React.FC = () => {
       }
       return [{ id: verseId, text: verse.text, reference, timestamp: Date.now() }, ...prev];
     });
-
     if (user && !user.isGuest && supabase) {
       try {
         if (!exists) {
@@ -237,7 +225,6 @@ const App: React.FC = () => {
     else if (type === 'quote' || type === 'wisdom') setQuotes(prev => prev.map(q => q.id === id ? { ...q, isFavorite: false } : q));
     else if (type === 'legend' || type === 'iconic') setIconicQuotes(prev => prev.map(q => q.id === id ? { ...q, isFavorite: false } : q));
     else if (type === 'verse' || type === 'bible') setBibleAffirmations(prev => prev.map(q => q.id === id ? { ...q, isFavorite: false } : q));
-    
     if (user && !user.isGuest && supabase) {
       try { await supabase.from('bookmarks').delete().eq('user_id', user.id).eq('item_id', id); }
       catch (e) { console.error("Remove bookmark error:", e); }
@@ -260,23 +247,22 @@ const App: React.FC = () => {
         if (view === 'onboarding') return <Onboarding onFinish={() => setView('auth')} />;
         return <Auth onAuthComplete={(u) => { setUser(u); setView('main'); syncUserContent(u.id); }} />;
     }
-
     switch (activeTab) {
-      case 'home': return <Home user={user} dailyItems={dailyWisdom} onTabChange={setActiveTab} onFavorite={handleToggleFavorite} onOpenAI={() => setShowAI(true)} />;
+      // Fix: Added onCategoryClick prop to Home component
+      case 'home': return <Home user={user} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={() => setShowAI(true)} />;
       case 'discover': return <Discover searchQuery={searchQuery} onSearchChange={setSearchQuery} onCategoryClick={setActiveCategory} />;
       case 'bible': return <BibleView user={user} onBookmark={handleBookmarkBibleVerse} onUpgrade={() => setShowPinGate(true)} />;
       case 'book': return <LikkleBook entries={journalEntries} onAdd={handleAddJournalEntry} onDelete={handleDeleteJournalEntry} searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
-      case 'me': return <Profile user={user} entries={journalEntries} quotes={quotes} iconic={iconicQuotes} bible={bibleAffirmations} bookmarkedVerses={bookmarkedVerses} onOpenSettings={() => setShowSettings(true)} onStatClick={setActiveTab} onUpdateUser={handleUpdateUser} onRemoveBookmark={handleRemoveBookmark} />;
-      default: return <Home user={user} dailyItems={dailyWisdom} onTabChange={setActiveTab} onFavorite={handleToggleFavorite} onOpenAI={() => setShowAI(true)} />;
+      case 'me': return <Profile user={user} entries={journalEntries} quotes={quotes} iconic={iconicQuotes} bible={bibleAffirmations} bookmarkedVerses={bookmarkedVerses} onOpenSettings={() => setShowSettings(true)} onStatClick={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onUpdateUser={handleUpdateUser} onRemoveBookmark={handleRemoveBookmark} />;
+      default: return <Home user={user} dailyItems={dailyWisdom} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} onCategoryClick={setActiveCategory} onFavorite={handleToggleFavorite} onOpenAI={() => setShowAI(true)} />;
     }
   };
 
   if (view === 'splash') return <SplashScreen progress={loadingProgress} />;
 
   return (
-    <div className="relative flex flex-col h-screen max-w-[480px] mx-auto overflow-hidden bg-white dark:bg-background-dark shadow-2xl transition-colors duration-300">
+    <div className="relative flex flex-col h-screen w-full max-w-2xl mx-auto overflow-hidden bg-white dark:bg-background-dark shadow-2xl transition-colors duration-300">
       <div className="fixed inset-0 jamaica-gradient opacity-60 pointer-events-none z-0"></div>
-      
       {notification && (
         <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[2000] animate-fade-in pointer-events-none w-fit px-8">
           <div className="bg-jamaican-gold py-2.5 px-4 rounded-full flex items-center gap-2 shadow-2xl border border-black/10">
@@ -285,40 +271,20 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-
       <main className="flex-1 relative z-10 overflow-y-auto no-scrollbar scroll-smooth">{renderContent()}</main>
-      
       {showPinGate && (
         <PinEntryModal onClose={() => setShowPinGate(false)} onVerify={() => { setShowPinGate(false); setShowPremium(true); }} />
       )}
-
       {showSettings && user && (
-        <Settings 
-          user={user} 
-          isDarkMode={isDarkMode} 
-          onToggleTheme={() => setIsDarkMode(!isDarkMode)} 
-          onClose={() => setShowSettings(false)} 
-          onUpgrade={() => setShowPinGate(true)} 
-          onSignOut={handleSignOut} 
-          onUpdateUser={handleUpdateUser} 
-          onOpenPrivacy={() => { setShowSettings(false); setView('privacy'); }} 
-          onOpenTerms={() => { setShowSettings(false); setView('terms'); }} 
-        />
+        <Settings user={user} isDarkMode={isDarkMode} onToggleTheme={() => setIsDarkMode(!isDarkMode)} onClose={() => setShowSettings(false)} onUpgrade={() => setShowPinGate(true)} onSignOut={handleSignOut} onUpdateUser={handleUpdateUser} onOpenPrivacy={() => { setShowSettings(false); setView('privacy'); }} onOpenTerms={() => { setShowSettings(false); setView('terms'); }} />
       )}
       {showAI && user && (
-        <AIWisdom 
-          user={user} 
-          onClose={() => setShowAI(false)} 
-          onUpgrade={() => { setShowAI(false); setShowPinGate(true); }} 
-        />
+        <AIWisdom user={user} onClose={() => setShowAI(false)} onUpgrade={() => { setShowAI(false); setShowPinGate(true); }} />
       )}
       {showPremium && (
-        <PremiumUpgrade 
-          onClose={() => setShowPremium(false)} 
-          onPurchaseSuccess={() => { handleUpdateUser({ isPremium: true }); setShowPremium(false); }} 
-        />
+        <PremiumUpgrade onClose={() => setShowPremium(false)} onPurchaseSuccess={() => { handleUpdateUser({ isPremium: true }); setShowPremium(false); }} />
       )}
-      {view === 'main' && <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />}
+      {view === 'main' && <BottomNav activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); setActiveCategory(null); }} />}
     </div>
   );
 };
@@ -326,35 +292,23 @@ const App: React.FC = () => {
 const PinEntryModal: React.FC<{ onClose: () => void; onVerify: () => void }> = ({ onClose, onVerify }) => {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === '1022') {
-      onVerify();
-    } else {
+    if (pin === '1022') onVerify();
+    else {
       setError(true);
       setPin('');
       setTimeout(() => setError(false), 500);
     }
   };
-
   return (
     <div className="fixed inset-0 z-[3000] bg-background-dark/95 flex flex-col items-center justify-center p-8 backdrop-blur-xl animate-fade-in">
       <div className={`glass p-10 rounded-[3rem] w-full max-w-[320px] text-center border-white/5 shadow-2xl transition-all ${error ? 'border-red-500 bg-red-500/10 scale-95' : 'border-primary/20'}`}>
         <span className="material-symbols-outlined text-primary text-5xl mb-6">lock_open</span>
         <h2 className="text-xl font-black text-white mb-2 uppercase tracking-widest">Secret Gate</h2>
         <p className="text-white/40 text-[10px] font-bold mb-8 uppercase tracking-widest leading-relaxed">Enter di secret pin fi access di donation feature.</p>
-        
         <form onSubmit={handleSubmit} className="space-y-6">
-          <input 
-            type="password" 
-            maxLength={4} 
-            placeholder="••••" 
-            autoFocus
-            className="w-full h-20 bg-white/5 border border-white/10 rounded-2xl text-center text-4xl font-black text-primary focus:ring-0 focus:border-primary transition-all tracking-[0.5em]"
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-          />
+          <input type="password" maxLength={4} placeholder="••••" autoFocus className="w-full h-20 bg-white/5 border border-white/10 rounded-2xl text-center text-4xl font-black text-primary focus:ring-0 focus:border-primary transition-all tracking-[0.5em]" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
           <div className="grid grid-cols-2 gap-3">
              <button type="button" onClick={onClose} className="glass py-4 rounded-xl font-black text-[10px] uppercase text-white/30">Cancel</button>
              <button type="submit" className="bg-primary py-4 rounded-xl font-black text-[10px] uppercase text-background-dark shadow-xl">Confirm</button>
